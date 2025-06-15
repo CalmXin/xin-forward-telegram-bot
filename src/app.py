@@ -1,7 +1,11 @@
+from pathlib import Path
+
 from telebot import TeleBot
 
 from src.config import BASE_DIR
-from src.services import BotService
+from src.core import DatabaseClient
+from src.entities import BaseEntity
+from src.services import BotService, Repository
 from src.utils import YamlUtil, setup_logger
 
 logger = setup_logger()
@@ -13,7 +17,24 @@ class Application:
     def __init__(self):
         self.config = YamlUtil(BASE_DIR / 'config.yaml')
         self.bot = TeleBot(self.config.get('bot', 'token'))
-        self.service = BotService(self.bot)
+
+        self.db: DatabaseClient | None = None
+        self._setup()
+        self.session = self.db.get_session()
+        self.repo = Repository(self.session)
+        self.service = BotService(self.bot, self.repo)
+
+        logger.info('初始化成功')
+
+    def __del__(self):
+        self.session.close()  # 关闭数据库会话
+
+    def _setup(self) -> None:
+        """初始化"""
+        db_file_path = BASE_DIR / 'db' / 'data.db'
+        db_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db = DatabaseClient(f'sqlite:///{db_file_path}')
+        BaseEntity.metadata.create_all(self.db.engine)
 
     def execute(self) -> None:
         """执行"""
