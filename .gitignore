@@ -1,3 +1,4 @@
 /logs/
 /.idea/
 /config.yaml
+/db/
