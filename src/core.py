@@ -1,6 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
+from src.utils import setup_logger
+
+logger = setup_logger()
+
 
 class DatabaseClient:
     def __init__(self, db_url: str):

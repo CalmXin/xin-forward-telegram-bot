@@ -1,8 +1,13 @@
+import re
+
+import httpx
+import telebot
 from sqlalchemy.orm import Session
 from telebot import TeleBot
 
+from src.core import logger
 from src.entities import MessagesEntity
-from src.utils import get_channel_url_by_username, get_channel_url_by_id
+from src.utils import get_channel_url_by_username
 
 
 class Repository:
@@ -52,14 +57,18 @@ class BotService:
         channel = self._bot.get_chat(channel_id)
         return channel.title
 
-    def get_channel_username(self, channel_id: int) -> str:
+    def get_channel_username(self, channel_id: int) -> str | None:
         """
-        获取频道的标题
+        获取频道的用户名
         """
-        channel = self._bot.get_chat(channel_id)
-        return channel.username
+        try:
+            channel = self._bot.get_chat(channel_id)
+            return channel.username
+        except telebot.apihelper.ApiTelegramException as e:
+            logger.exception(e)
+            return None
 
-    def check_channel_messages(self) -> dict:
+    def check_channel_messages(self, channel_id_list: list[int]) -> dict:
         """
         获取所有频道的更新
 
@@ -67,34 +76,42 @@ class BotService:
         """
         result = {}
         # 获取更新
-        updates = self._bot.get_updates(timeout=10, allowed_updates=["channel_post"])
-
-        for update in updates:
-            # 不是频道消息跳过
-            if update.channel_post is None:
-                continue
-            # 提取信息
-            channel_post = update.channel_post
-            message_id = channel_post.message_id
-            channel_id = channel_post.chat.id
-            # > 检测是否在数据库中
-            if not self.repo.check_message(channel_id, message_id):
-                continue
-            # > 如果频道 ID 不在结果中，则创建一个空数组
-            if channel_id not in result:
-                result[channel_id] = []
+        for channel_id in channel_id_list:
+            # 判断频道是否是公开的
             channel_username = self.get_channel_username(channel_id)
+            if channel_username is None:
+                logger.warning(f"频道 {channel_id} 不是公开频道")
+                continue
 
-            # 生成消息链接
-            if channel_username is not None:
+            one_channel_result = self.check_one_channel_message(channel_id)  # 获取单个频道的更新
+            for message_id in one_channel_result[channel_id]:
+                # 检测是否在数据库中
+                if self.repo.check_message(channel_id, message_id):
+                    continue
+                # 如果频道 ID 不在结果中，则创建一个空数组
+                if channel_id not in result:
+                    result[channel_id] = []
+                # 生成消息链接
                 url = get_channel_url_by_username(channel_username, message_id)
-            else:
-                url = get_channel_url_by_id(channel_id, message_id)
+                # 保存结果
+                result[channel_id].append(url)
+                # 保存到数据库
+                self.repo.save_message(channel_id, message_id, url)
+        return result
 
-            # 保存结果
-            result[channel_id].append(url)
-            # 保存到数据库
-            self.repo.save_message(channel_id, message_id, url)
+    def check_one_channel_message(self, channel_id: int) -> dict:
+        """
+        获取单个频道的更新
+
+        :return: key 为频道的 ID，value 是数组，代表最新的消息 ID
+        """
+        result = {}
+        # 获取更新
+        channel_username = self.get_channel_username(channel_id)
+        response = httpx.get(f'https://t.me/s/{channel_username}')
+        html_text = response.text
+        message_ids = re.findall(rf'https://t.me/{channel_username}/(\d+)', html_text)
+        result[channel_id] = message_ids
         return result
 
     def send_message_to_group(self, html_text: str, group_chat_id: int, message_thread_id: int) -> None:
