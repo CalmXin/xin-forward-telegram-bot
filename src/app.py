@@ -15,7 +15,7 @@ class Application:
 
     def __init__(self):
         self.config = YamlUtil(BASE_DIR / 'config.yaml')
-        self.bot = TeleBot(self.config.get('bot', 'dev_token'))
+        self.bot = TeleBot(self.config.get('bot', 'token'))
 
         self.db: DatabaseClient | None = None
         self._setup()
