@@ -1,4 +1,5 @@
-from src.app import Application, logger
+from src.app import Application
+from src.core import logger
 
 
 def main():

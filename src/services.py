@@ -1,4 +1,5 @@
 import re
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import httpx
 import telebot
@@ -46,9 +47,8 @@ class Repository:
 
 
 class BotService:
-    def __init__(self, bot: TeleBot, repo: Repository | None = None):
+    def __init__(self, bot: TeleBot):
         self._bot = bot
-        self.repo = repo
 
     def get_channel_title(self, channel_id: int) -> str:
         """
@@ -65,39 +65,7 @@ class BotService:
             channel = self._bot.get_chat(channel_id)
             return channel.username
         except telebot.apihelper.ApiTelegramException as e:
-            logger.exception(e)
             return None
-
-    def check_channel_messages(self, channel_id_list: list[int]) -> dict:
-        """
-        获取所有频道的更新
-
-        :return: key 为频道的 ID，value 是数组，代表最新的消息 ID
-        """
-        result = {}
-        # 获取更新
-        for channel_id in channel_id_list:
-            # 判断频道是否是公开的
-            channel_username = self.get_channel_username(channel_id)
-            if channel_username is None:
-                logger.warning(f"频道 {channel_id} 不是公开频道")
-                continue
-
-            one_channel_result = self.check_one_channel_message(channel_id)  # 获取单个频道的更新
-            for message_id in one_channel_result[channel_id]:
-                # 检测是否在数据库中
-                if self.repo.check_message(channel_id, message_id):
-                    continue
-                # 如果频道 ID 不在结果中，则创建一个空数组
-                if channel_id not in result:
-                    result[channel_id] = []
-                # 生成消息链接
-                url = get_channel_url_by_username(channel_username, message_id)
-                # 保存结果
-                result[channel_id].append(url)
-                # 保存到数据库
-                self.repo.save_message(channel_id, message_id, url)
-        return result
 
     def check_one_channel_message(self, channel_id: int) -> dict:
         """
@@ -124,3 +92,46 @@ class BotService:
             parse_mode="html",
             message_thread_id=message_thread_id
         )
+
+
+class CheckService:
+    def __init__(self, repo: Repository, bot_service: BotService, pool: ThreadPoolExecutor):
+        self.repo = repo
+        self.bot_service = bot_service
+        self.pool = pool
+
+    def check_channel_messages(self, channel_id_list: list[int]) -> dict:
+        """
+        获取所有频道的更新
+
+        :return: key 为频道的 ID，value 是数组，代表最新的消息 ID
+        """
+        results = self.pool.map(self._fetch_one_channel_message, channel_id_list)
+        return {
+            k: v
+            for result in results if result
+            for k, v in result.items() if v
+        }
+
+    def _fetch_one_channel_message(self, channel_id: int) -> dict[int, list[str]] | None:
+        """获取单个频道的所有新链接"""
+        result = []  # 用于储存所有的 url
+
+        # 判断频道是否是需要被收集的
+        channel_username = self.bot_service.get_channel_username(channel_id)
+        if channel_username is None:
+            logger.warning(f"频道 {channel_id} 不是公开频道")
+            return None
+
+        one_channel_result = self.bot_service.check_one_channel_message(channel_id)  # 获取单个频道的更新
+        for message_id in one_channel_result[channel_id]:
+            # 检测是否在数据库中
+            if self.repo.check_message(channel_id, message_id):
+                continue
+            # 生成消息链接
+            url = get_channel_url_by_username(channel_username, message_id)
+            # 保存结果
+            result.append(url)
+            # 保存到数据库
+            self.repo.save_message(channel_id, message_id, url)
+        return {channel_id: result}
