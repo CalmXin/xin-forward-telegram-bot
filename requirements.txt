@@ -1,0 +1,5 @@
+pyTelegramBotAPI~=4.27.0
+SQLAlchemy~=2.0.41
+PyYAML~=6.0.2
+loguru~=0.7.3
+httpx~=0.28.1
