@@ -55,12 +55,13 @@ class Application:
         group_chat_id = self.config.get('group_chat_id')
         for channel_id, urls in messages_dict.items():
             # 开始转发
-            channel_title = self.bot_service.get_channel_title(int(channel_id))
+            channel_username = self.bot_service.get_channel_username(int(channel_id))
             for url in urls:
                 self.bot_service.send_message_to_group(
-                    html_text=f'#{channel_title} <a href="{url}">{url}</a>',
+                    html_text=f'#{channel_username} <a href="{url}">{url}</a>',
                     group_chat_id=group_chat_id,
                     message_thread_id=forward_mapping[channel_id]
                 )
+                logger.info(f'已转发 {channel_username} 的 {url}')
                 time.sleep(3)
-            logger.info(f'已转发 {channel_title} 的 {len(urls)} 条消息')
+            logger.info(f'已转发 {channel_username} 的 {len(urls)} 条消息')
