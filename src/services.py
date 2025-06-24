@@ -61,10 +61,13 @@ class Repository:
             .filter(MessagesEntity.is_send == False)
             .all()
         )
-        return {
-            get_username_by_url(url[0]): [url[0]]
-            for url in urls
-        }
+        result = {}
+        for url in urls:
+            channel_username = get_username_by_url(url[0])
+            if channel_username not in result:
+                result[channel_username] = []
+            result[channel_username].append(url[0])
+        return result
 
     def mark_url_is_send(self, url: str) -> None:
         """将消息标记为已发送"""
