@@ -44,10 +44,11 @@ class Application:
         try:
             repo = Repository(session)
             check_service = CheckService(repo, self.bot_service, self.pool)
-            with session.begin():
-                messages_dict: dict[int, list[str]] = check_service.check_channel_messages(
-                    list(forward_mapping.keys())
-                )
+
+            messages_dict: dict[int, list[str]] = check_service.check_channel_messages(
+                list(forward_mapping.keys())
+            )
+            session.commit()
             logger.info(f'获取到 {sum([len(i) for i in messages_dict.values()])} 条消息')
 
             # 开始转发
@@ -63,11 +64,14 @@ class Application:
                             message_thread_id=forward_mapping[channel_username]
                         )
                         repo.mark_url_is_send(url)
+                        session.commit()
                         logger.info(f'已转发 {channel_username} 的 {url}')
                     except Exception as e:
                         logger.error(f'转发 {channel_username} 的 {url} 失败: {e}')
 
                     time.sleep(3)
-                logger.info(f'已转发 {channel_username} 的 {len(urls)} 条消息')
+        except Exception as e:
+            logger.exception(e)
+            session.rollback()
         finally:
             session.close()

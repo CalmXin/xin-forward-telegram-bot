@@ -68,9 +68,8 @@ class Repository:
 
     def mark_url_is_send(self, url: str) -> None:
         """将消息标记为已发送"""
-        self.session.query(MessagesEntity).filter(MessagesEntity.message_url == url).update({
-            MessagesEntity.is_send: True
-        })
+        entity = self.session.query(MessagesEntity).filter(MessagesEntity.message_url == url).first()
+        entity.is_send = True
 
 
 class BotService:
