@@ -38,30 +38,36 @@ class Application:
     def execute(self) -> None:
         """执行"""
         # 将某个频道的消息发送到群组对应的话题
-        forward_mapping: dict = self.config.get('forward_mapping')
+        forward_mapping: dict[str, int] = self.config.get('forward_mapping')
         # 获取最新的记录
         session = self.db.get_session()
         try:
-            check_service = CheckService(Repository(session), self.bot_service, self.pool)
+            repo = Repository(session)
+            check_service = CheckService(repo, self.bot_service, self.pool)
             with session.begin():
-                messages_dict: dict[str, list[int]] = check_service.check_channel_messages(
+                messages_dict: dict[int, list[str]] = check_service.check_channel_messages(
                     list(forward_mapping.keys())
                 )
             logger.info(f'获取到 {sum([len(i) for i in messages_dict.values()])} 条消息')
+
+            # 开始转发
+            group_chat_id = self.config.get('group_chat_id')
+            for channel_username, urls in repo.get_all_not_send_messages().items():
+                for url in urls:
+                    # 确保发送成功后才标记为已发送
+                    try:
+                        self.bot_service.send_message_to_group(
+                            html_text=f'频道: #{channel_username}\n'
+                                      f'链接: <a href="{url}">{url}</a>',
+                            group_chat_id=group_chat_id,
+                            message_thread_id=forward_mapping[channel_username]
+                        )
+                        repo.mark_url_is_send(url)
+                        logger.info(f'已转发 {channel_username} 的 {url}')
+                    except Exception as e:
+                        logger.error(f'转发 {channel_username} 的 {url} 失败: {e}')
+
+                    time.sleep(3)
+                logger.info(f'已转发 {channel_username} 的 {len(urls)} 条消息')
         finally:
             session.close()
-
-        # 开始转发
-        group_chat_id = self.config.get('group_chat_id')
-        for channel_id, urls in messages_dict.items():
-            # 开始转发
-            channel_username = self.bot_service.get_channel_username(int(channel_id))
-            for url in urls:
-                self.bot_service.send_message_to_group(
-                    html_text=f'#{channel_username} <a href="{url}">{url}</a>',
-                    group_chat_id=group_chat_id,
-                    message_thread_id=forward_mapping[channel_id]
-                )
-                logger.info(f'已转发 {channel_username} 的 {url}')
-                time.sleep(3)
-            logger.info(f'已转发 {channel_username} 的 {len(urls)} 条消息')

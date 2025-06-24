@@ -3,6 +3,6 @@ bot:
 
 group_chat_id: -100000000 # 话题群组 ID
 
-# key 是频道, value 是频道的话题 id
+# key 是频道 username, value 是频道的话题 id
 forward_mapping:
-    -100000000: 123
+    YioveCom: 1

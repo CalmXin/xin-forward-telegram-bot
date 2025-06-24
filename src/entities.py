@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, DateTime, String
+from sqlalchemy import Column, Integer, DateTime, String, Boolean
 from sqlalchemy.orm import declarative_base
 
 from src.utils import utcnow
@@ -15,3 +15,4 @@ class MessagesEntity(BaseEntity):
     message_url = Column(String(1024))
     create_time = Column(DateTime(timezone=True), default=utcnow)
     update_time = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    is_send = Column(Boolean, default=False)  # 是否发送
